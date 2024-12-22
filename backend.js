@@ -1,73 +1,131 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
+/************************************************************
+ * Installer les dépendances :
+ *   npm install express cors mysql2
+ *
+ * Lancer votre serveur avec :
+ *   node backend.js
+ *
+ * Accéder aux routes :
+ *   POST /pledgesDB  => ajoute un pledge
+ *   GET  /pledgesDB  => récupère les 10 derniers pledges
+ ************************************************************/
 
+const express = require('express');
+const cors = require('cors');
+const mysql = require('mysql2/promise'); // Bibliothèque MySQL2 (mode async/await)
+
+// Créer l'application Express
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Modèle de Pledge
-const pledgeSchema = new mongoose.Schema({
-  publicKey: String,
-  amount: Number,
-  timestamp: { type: Date, default: Date.now },
-});
+// Configuration de la connexion MySQL
+// (Remplacez ces informations par vos identifiants réels)
+const dbConfig = {
+  host: 'localhost',
+  user: 'merryuser',
+  password: 'merrypass',
+  database: 'merrydb',
+  port: 3306
+};
 
-const Pledge = mongoose.model('Pledge', pledgeSchema);
-
-// Connexion à MongoDB
-mongoose
-  .connect('mongodb://127.0.0.1:27017/pledgesDB', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.error('Failed to connect to MongoDB:', err));
-
-// Route pour ajouter un pledge
+// ROUTE : POST /pledgesDB (ajouter un pledge)
 app.post('/pledgesDB', async (req, res) => {
-  const { publicKey, amount, walletBalance } = req.body;
+  try {
+    const { publicKey, amount, walletBalance } = req.body;
 
-  if (!publicKey || !amount) {
-    return res.status(400).send({ error: 'Public key and amount are required.' });
+    if (!publicKey || !amount) {
+      return res
+        .status(400)
+        .send({ error: 'Public key and amount are required.' });
+    }
+    if (typeof walletBalance !== 'number') {
+      return res
+        .status(400)
+        .send({ error: 'walletBalance is required and must be a number.' });
+    }
+
+    // Connexion à la DB
+    const connection = await mysql.createConnection(dbConfig);
+
+    // Récupérer la somme déjà pledgée par ce publicKey
+    // SELECT SUM(amount) as total FROM pledges WHERE publicKey = ?
+    const [rows] = await connection.execute(
+      `SELECT SUM(amount) as total FROM pledges WHERE publicKey = ?`,
+      [publicKey]
+    );
+
+    const totalPledgedSoFar = rows[0].total || 0;
+
+    // Vérifier si le nouveau pledge dépasse le solde total du wallet
+    if (totalPledgedSoFar + amount > walletBalance) {
+      await connection.end();
+      return res
+        .status(400)
+        .send({ error: 'Pledge exceeds your total wallet balance.' });
+    }
+
+    // Insérer le nouveau pledge
+    // INSERT INTO pledges (publicKey, amount) VALUES (?, ?)
+    await connection.execute(
+      `INSERT INTO pledges (publicKey, amount) VALUES (?, ?)`,
+      [publicKey, amount]
+    );
+
+    await connection.end();
+    return res.status(201).send({
+      publicKey,
+      amount,
+      // On ne stocke pas walletBalance dans la DB, c'est juste pour validation
+      timestamp: new Date() // on renvoie la date locale (approx)
+    });
+  } catch (error) {
+    console.error('Error in POST /pledgesDB:', error);
+    return res.status(500).send({ error: 'Internal server error.' });
   }
-
-  if (typeof walletBalance !== 'number') {
-    return res.status(400).send({ error: 'walletBalance is required and must be a number.' });
-  }
-
-  const aggregationResult = await Pledge.aggregate([
-    { $match: { publicKey: publicKey } },
-    { $group: { _id: null, total: { $sum: "$amount" } } }
-  ]);
-
-  const totalPledgedSoFar = (aggregationResult.length > 0) ? aggregationResult[0].total : 0;
-
-  if (totalPledgedSoFar + amount > walletBalance) {
-    return res.status(400).send({ error: 'Pledge exceeds your total wallet balance.' });
-  }
-
-  const pledge = new Pledge({ publicKey, amount });
-  await pledge.save();
-  res.status(201).send(pledge);
 });
 
-// Route pour récupérer les 10 derniers pledges
+// ROUTE : GET /pledgesDB (récupérer les 10 derniers pledges)
 app.get('/pledgesDB', async (req, res) => {
-  const pledges = await Pledge.find().sort({ timestamp: -1 }).limit(10);
-  res.send(pledges);
+  try {
+    // Connexion à la DB
+    const connection = await mysql.createConnection(dbConfig);
+
+    // SELECT * FROM pledges ORDER BY created_at DESC LIMIT 10
+    const [rows] = await connection.execute(
+      `SELECT id, publicKey, amount, created_at 
+       FROM pledges 
+       ORDER BY created_at DESC 
+       LIMIT 10`
+    );
+
+    await connection.end();
+    return res.send(rows);
+  } catch (error) {
+    console.error('Error in GET /pledgesDB:', error);
+    return res.status(500).send({ error: 'Internal server error.' });
+  }
 });
 
-// Route pour obtenir le total des SOL pledgés
+// ROUTE Optionnelle si vous avez un /total-pledged
+// (Récupérer le total des SOL pledgés)
 app.get('/total-pledged', async (req, res) => {
-  const aggregationResult = await Pledge.aggregate([
-    { $group: { _id: null, total: { $sum: "$amount" } } }
-  ]);
-  const total = (aggregationResult.length > 0) ? aggregationResult[0].total : 0;
-  res.send({ total });
+  try {
+    const connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.execute(
+      `SELECT SUM(amount) as total FROM pledges`
+    );
+    await connection.end();
+    const total = rows[0].total || 0;
+    return res.send({ total });
+  } catch (error) {
+    console.error('Error in GET /total-pledged:', error);
+    return res.status(500).send({ error: 'Internal server error.' });
+  }
 });
 
-const PORT = 3000;
+// Lancement du serveur
+const PORT = 3000; // ou un autre port de votre choix
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
