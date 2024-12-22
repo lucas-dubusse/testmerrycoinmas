@@ -49,7 +49,6 @@ app.post('/pledgesDB', async (req, res) => {
     const connection = await mysql.createConnection(dbConfig);
 
     // Récupérer la somme déjà pledgée par ce publicKey
-    // SELECT SUM(amount) as total FROM pledges WHERE publicKey = ?
     const [rows] = await connection.execute(
       `SELECT SUM(amount) as total FROM pledges WHERE publicKey = ?`,
       [publicKey]
@@ -66,7 +65,6 @@ app.post('/pledgesDB', async (req, res) => {
     }
 
     // Insérer le nouveau pledge
-    // INSERT INTO pledges (publicKey, amount) VALUES (?, ?)
     await connection.execute(
       `INSERT INTO pledges (publicKey, amount) VALUES (?, ?)`,
       [publicKey, amount]
@@ -76,8 +74,7 @@ app.post('/pledgesDB', async (req, res) => {
     return res.status(201).send({
       publicKey,
       amount,
-      // On ne stocke pas walletBalance dans la DB, c'est juste pour validation
-      timestamp: new Date() // on renvoie la date locale (approx)
+      timestamp: new Date()
     });
   } catch (error) {
     console.error('Error in POST /pledgesDB:', error);
@@ -88,10 +85,8 @@ app.post('/pledgesDB', async (req, res) => {
 // ROUTE : GET /pledgesDB (récupérer les 10 derniers pledges)
 app.get('/pledgesDB', async (req, res) => {
   try {
-    // Connexion à la DB
     const connection = await mysql.createConnection(dbConfig);
 
-    // SELECT * FROM pledges ORDER BY created_at DESC LIMIT 10
     const [rows] = await connection.execute(
       `SELECT id, publicKey, amount, created_at 
        FROM pledges 
@@ -107,8 +102,7 @@ app.get('/pledgesDB', async (req, res) => {
   }
 });
 
-// ROUTE Optionnelle si vous avez un /total-pledged
-// (Récupérer le total des SOL pledgés)
+// ROUTE Optionnelle /total-pledged
 app.get('/total-pledged', async (req, res) => {
   try {
     const connection = await mysql.createConnection(dbConfig);
@@ -124,8 +118,7 @@ app.get('/total-pledged', async (req, res) => {
   }
 });
 
-// Lancement du serveur
-const PORT = 3000; // ou un autre port de votre choix
-app.listen(PORT, () => {
+const PORT = 3000;
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
