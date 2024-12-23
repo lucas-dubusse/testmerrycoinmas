@@ -111,6 +111,7 @@ app.get('/total-pledged', async (req, res) => {
     );
     await connection.end();
     const total = rows[0].total || 0;
+    console.log(total);
     const totalPledged = Number(total);
     return res.send({ totalPledged });
   } catch (error) {
