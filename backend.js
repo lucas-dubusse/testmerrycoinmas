@@ -112,7 +112,7 @@ app.get('/total-pledged', async (req, res) => {
     await connection.end();
     const total = rows[0].total || 0;
     const totalPledged = Number(total);
-    return res.send({ total });
+    return res.send({ totalPledged });
   } catch (error) {
     console.error('Error in GET /total-pledged:', error);
     return res.status(500).send({ error: 'Internal server error.' });
