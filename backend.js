@@ -113,6 +113,7 @@ app.get('/total-pledged', async (req, res) => {
     const total = rows[0].total || 0;
     console.log(total);
     const totalPledged = Number(total);
+    console.log(totalPledged);
     return res.send({ totalPledged });
   } catch (error) {
     console.error('Error in GET /total-pledged:', error);
